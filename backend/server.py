@@ -1,4 +1,5 @@
 import asyncio
+import random
 import ssl
 import base64
 import os
@@ -21,8 +22,24 @@ parser = argparse.ArgumentParser()
 
 parser.add_argument("--port", type=int, default=5000)
 parser.add_argument("--name", default="backend")
+parser.add_argument(
+    "--failure-rate",
+    type=float,
+    default=0.0,
+    help="Probability of synthetic failure for each request"
+)
+
+parser.add_argument(
+    "--delay-ms",
+    type=int,
+    default=0,
+    help="Synthetic delay in milliseconds"
+)
 
 args = parser.parse_args()
+if not 0.0 <= args.failure_rate <= 1.0:
+    parser.error("--failure-rate must be between 0.0 and 1.0")
+
 
 NAME = args.name
 HOST = "0.0.0.0"
@@ -327,6 +344,27 @@ async def unregister_user(websocket):
 
 async def handle_client(websocket):
     """Handle the complete session of one connected client."""
+
+    # ---------------------------------------------------------
+    # Synthetic failure simulation
+    # ---------------------------------------------------------
+
+    if args.delay_ms > 0:
+        await asyncio.sleep(args.delay_ms / 1000)
+
+    # Manual failure:
+    # wss://host:port/?fail=true
+
+    if websocket.path == "/?fail=true":
+        print(f"[FAILURE SIMULATION] {NAME}: manual failure")
+        await websocket.close(code=1013, reason="Synthetic failure")
+        return
+
+    # Random failure:
+    if random.random() < args.failure_rate:
+        print(f"[FAILURE SIMULATION] {NAME}: random failure")
+        await websocket.close(code=1013, reason="Synthetic failure")
+        return
 
     username = await register_user(websocket)
 
