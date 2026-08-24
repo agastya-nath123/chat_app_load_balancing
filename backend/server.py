@@ -362,14 +362,6 @@ async def handle_client(websocket):
             await websocket.close(code=1013, reason="Synthetic failure")
             return
 
-    # Random failure:
-    if random.random() < args.failure_rate:
-        print(f"[FAILURE SIMULATION] {NAME}: random failure")
-        await websocket.close(code=1013, reason="Synthetic failure")
-        return
-
-
-    
     username = await register_user(websocket)
 
     if username is None:
@@ -568,6 +560,32 @@ def start_health_server():
 
     server.serve_forever()
 
+async def process_request(connection, request):
+    query = parse_qs(
+        urlparse(request.path).query
+    )
+
+    # Manual failure
+    if query.get("fail", ["false"])[0].lower() == "true":
+        print(f"[FAILURE SIMULATION] {NAME}: manual 503")
+
+        return (
+            503,
+            [],
+            b"Synthetic backend failure\n",
+        )
+
+    if random.random() < args.failure_rate:
+        print(f"[FAILURE SIMULATION] {NAME}: synthetic 503")
+
+        return (
+            503,
+            [],
+            b"Synthetic backend failure\n",
+        )
+
+    return None
+
 async def main():
     """Start the WebSocket server."""
 
@@ -584,6 +602,7 @@ async def main():
         handle_client,
         HOST,
         PORT,
+        process_request=process_request,
         ssl=ssl_context,
     ):
         print(f"WebSocket server running on wss://{HOST}:{PORT} (backend server name: {NAME})")

@@ -290,41 +290,14 @@ func main() {
 				return
 			}
 
-			conn.SetReadDeadline(time.Now().Add(*timeout))
-
-			_, _, readErr := conn.ReadMessage()
-
 			mu.Lock()
 
-			if readErr != nil {
-				if websocket.IsCloseError(
-					readErr,
-					1013,
-				) {
-					// Synthetic backend failure.
-					failed++
-					mu.Unlock()
-
-					conn.Close()
-					return
-				}
-
-				// Other connection-level failure.
-				failed++
-				mu.Unlock()
-
-				conn.Close()
-				return
-			}
-
-			// Connection stayed open, so consider it successful.
 			successful++
 			latencies = append(latencies, elapsed)
 
 			mu.Unlock()
 
 			conn.Close()
-
 		}()
 
 	}
