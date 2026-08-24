@@ -355,10 +355,12 @@ async def handle_client(websocket):
     # Manual failure:
     # wss://host:port/?fail=true
 
-    if websocket.path == "/?fail=true":
-        print(f"[FAILURE SIMULATION] {NAME}: manual failure")
-        await websocket.close(code=1013, reason="Synthetic failure")
-        return
+    if websocket.request is not None:
+        path = websocket.request.path
+        if websocket.path == "/?fail=true":
+            print(f"[FAILURE SIMULATION] {NAME}: manual failure")
+            await websocket.close(code=1013, reason="Synthetic failure")
+            return
 
     # Random failure:
     if random.random() < args.failure_rate:
@@ -366,6 +368,8 @@ async def handle_client(websocket):
         await websocket.close(code=1013, reason="Synthetic failure")
         return
 
+
+    
     username = await register_user(websocket)
 
     if username is None:
