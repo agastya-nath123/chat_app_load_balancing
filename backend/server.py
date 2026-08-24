@@ -22,6 +22,7 @@ parser.add_argument("--name", default="backend")
 
 args = parser.parse_args()
 
+NAME = args.name
 HOST = "0.0.0.0"
 PORT = args.port
 
@@ -485,7 +486,7 @@ async def main():
         PORT,
         ssl=ssl_context,
     ):
-        print(f"WebSocket server running on wss://{HOST}:{PORT} (backend server name: {args.name})")
+        print(f"WebSocket server running on wss://{HOST}:{PORT} (backend server name: {NAME})")
         print(f"Database: {DB_PATH}")
         print("Waiting for clients...")
 
