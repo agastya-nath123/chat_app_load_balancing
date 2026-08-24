@@ -357,7 +357,7 @@ async def handle_client(websocket):
 
     if websocket.request is not None:
         path = websocket.request.path
-        if websocket.path == "/?fail=true":
+        if path == "/?fail=true":
             print(f"[FAILURE SIMULATION] {NAME}: manual failure")
             await websocket.close(code=1013, reason="Synthetic failure")
             return
