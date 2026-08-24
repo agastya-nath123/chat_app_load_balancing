@@ -1,25 +1,25 @@
 package main
 
 import (
+	"crypto/tls"
+	"encoding/json"
 	"flag"
 	"log"
+	"net/http"
+	"net/http/httputil"
 	"net/url"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
-	"net/http"
-	"net/http/httputil"
-	"crypto/tls"
 	"time"
-	"encoding/json"
-	"sort"
 )
 
 type Backend struct {
-	URL   *url.URL
+	URL       *url.URL
 	HealthURL *url.URL
-	Alive atomic.Bool
-	InFlight atomic.Int64
+	Alive     atomic.Bool
+	InFlight  atomic.Int64
 }
 
 type LoadBalancer struct {
@@ -118,30 +118,30 @@ func (lb *LoadBalancer) nextBackend() *Backend {
 }
 
 func (lb *LoadBalancer) statusHandler(
-    w http.ResponseWriter,
-    r *http.Request,
+	w http.ResponseWriter,
+	r *http.Request,
 ) {
-    type BackendStatus struct {
-        URL      string `json:"url"`
-        HealthURL string `json:"health_url"`
-        Alive    bool   `json:"alive"`
-        InFlight int64  `json:"in_flight"`
-    }
+	type BackendStatus struct {
+		URL       string `json:"url"`
+		HealthURL string `json:"health_url"`
+		Alive     bool   `json:"alive"`
+		InFlight  int64  `json:"in_flight"`
+	}
 
-    statuses := make([]BackendStatus, 0, len(lb.backends))
+	statuses := make([]BackendStatus, 0, len(lb.backends))
 
-    for _, backend := range lb.backends {
-        statuses = append(statuses, BackendStatus{
-            URL:       backend.URL.String(),
-            HealthURL: backend.HealthURL.String(),
-            Alive:     backend.Alive.Load(),
-            InFlight:  backend.InFlight.Load(),
-        })
-    }
+	for _, backend := range lb.backends {
+		statuses = append(statuses, BackendStatus{
+			URL:       backend.URL.String(),
+			HealthURL: backend.HealthURL.String(),
+			Alive:     backend.Alive.Load(),
+			InFlight:  backend.InFlight.Load(),
+		})
+	}
 
-    w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Type", "application/json")
 
-    json.NewEncoder(w).Encode(statuses)
+	json.NewEncoder(w).Encode(statuses)
 }
 
 func (lb *LoadBalancer) ServeHTTP(
@@ -149,17 +149,17 @@ func (lb *LoadBalancer) ServeHTTP(
 	r *http.Request,
 ) {
 	if r.URL.Path == "/lb/health" {
-        w.WriteHeader(http.StatusOK)
-        w.Write([]byte("ok"))
-        return
-    	}
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("ok"))
+		return
+	}
 	if r.URL.Path == "/lb/status" {
-        lb.statusHandler(w, r)
-        return
-    	}
+		lb.statusHandler(w, r)
+		return
+	}
 	if r.URL.Path == "/lb/metrics" {
-	lb.metricsHandler(w, r)
-	return
+		lb.metricsHandler(w, r)
+		return
 	}
 
 	lb.metrics.Total.Add(1)
@@ -188,33 +188,33 @@ func (lb *LoadBalancer) ServeHTTP(
 	proxy.Transport = transport
 
 	proxy.ModifyResponse = func(resp *http.Response) error {
-    if resp.StatusCode == http.StatusSwitchingProtocols || (resp.StatusCode >= 200 && resp.StatusCode < 400) {
-        lb.metrics.Success.Add(1)
-    } else {
-        lb.metrics.Failed.Add(1)
-    }
+		if resp.StatusCode == http.StatusSwitchingProtocols || (resp.StatusCode >= 200 && resp.StatusCode < 400) {
+			lb.metrics.Success.Add(1)
+		} else {
+			lb.metrics.Failed.Add(1)
+		}
 
-    elapsed := time.Since(start)
-    lb.metrics.recordLatency(elapsed)
+		elapsed := time.Since(start)
+		lb.metrics.recordLatency(elapsed)
 
-    return nil
-}
+		return nil
+	}
 
 	proxy.ErrorHandler = func(
-	rw http.ResponseWriter,
-	req *http.Request,
-	err error,
-) {
-	backend.Alive.Store(false)
+		rw http.ResponseWriter,
+		req *http.Request,
+		err error,
+	) {
+		backend.Alive.Store(false)
 
-	lb.metrics.BackendErrors.Add(1)
-	lb.metrics.Failed.Add(1)
+		lb.metrics.BackendErrors.Add(1)
+		lb.metrics.Failed.Add(1)
 
-	http.Error(
-		rw,
-		"backend unavailable",
-		http.StatusBadGateway,
-	)
+		http.Error(
+			rw,
+			"backend unavailable",
+			http.StatusBadGateway,
+		)
 	}
 
 	log.Printf(
@@ -229,62 +229,62 @@ func (lb *LoadBalancer) ServeHTTP(
 }
 
 var transport = &http.Transport{
-    TLSClientConfig: &tls.Config{
-        InsecureSkipVerify: true,
-    },
+	TLSClientConfig: &tls.Config{
+		InsecureSkipVerify: true,
+	},
 }
 
 func (lb *LoadBalancer) checkBackend(backend *Backend) {
-    client := &http.Client{
-        Timeout: 2 * time.Second,
-    }
+	client := &http.Client{
+		Timeout: 2 * time.Second,
+	}
 
-    resp, err := client.Get(
-        backend.HealthURL.String() + "/health",
-    )
+	resp, err := client.Get(
+		backend.HealthURL.String() + "/health",
+	)
 
-    if err != nil {
-        if backend.Alive.Swap(false) {
-            log.Printf(
-                "Backend became UNHEALTHY: %s",
-                backend.URL,
-            )
-        }
+	if err != nil {
+		if backend.Alive.Swap(false) {
+			log.Printf(
+				"Backend became UNHEALTHY: %s",
+				backend.URL,
+			)
+		}
 
-        return
-    }
+		return
+	}
 
-    resp.Body.Close()
+	resp.Body.Close()
 
-    if resp.StatusCode == http.StatusOK {
-        if !backend.Alive.Swap(true) {
-            log.Printf(
-                "Backend became HEALTHY: %s",
-                backend.URL,
-            )
-        }
-    } else {
-        if backend.Alive.Swap(false) {
-            log.Printf(
-                "Backend became UNHEALTHY: %s (status %d)",
-                backend.URL,
-                resp.StatusCode,
-            )
-        }
-    }
+	if resp.StatusCode == http.StatusOK {
+		if !backend.Alive.Swap(true) {
+			log.Printf(
+				"Backend became HEALTHY: %s",
+				backend.URL,
+			)
+		}
+	} else {
+		if backend.Alive.Swap(false) {
+			log.Printf(
+				"Backend became UNHEALTHY: %s (status %d)",
+				backend.URL,
+				resp.StatusCode,
+			)
+		}
+	}
 }
 
 func (lb *LoadBalancer) healthLoop() {
-    ticker := time.NewTicker(1 * time.Second)
-    defer ticker.Stop()
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
 
-    for {
-        for _, backend := range lb.backends {
-            lb.checkBackend(backend)
-        }
+	for {
+		for _, backend := range lb.backends {
+			lb.checkBackend(backend)
+		}
 
-        <-ticker.C
-    }
+		<-ticker.C
+	}
 }
 
 func (lb *LoadBalancer) metricsHandler(
@@ -329,44 +329,44 @@ func main() {
 		urls := strings.Split(part, ",")
 
 		if len(urls) != 2 {
-        		log.Fatalf(
-            			"invalid backend %q: expected CHAT_URL,HEALTH_URL",
-            			part,
-        		)
-    		}
+			log.Fatalf(
+				"invalid backend %q: expected CHAT_URL,HEALTH_URL",
+				part,
+			)
+		}
 
 		chatURL, err := url.Parse(strings.TrimSpace(urls[0]))
-    		if err != nil {
-        		log.Fatalf(
-            			"invalid chat URL %q: %v",
-            			urls[0],
-            			err,
-        		)
-    		}
+		if err != nil {
+			log.Fatalf(
+				"invalid chat URL %q: %v",
+				urls[0],
+				err,
+			)
+		}
 
 		healthURL, err := url.Parse(strings.TrimSpace(urls[1]))
-    		if err != nil {
-        		log.Fatalf(
-            			"invalid health URL %q: %v",
-            			urls[1],
-            			err,
-        		)
-    		}
+		if err != nil {
+			log.Fatalf(
+				"invalid health URL %q: %v",
+				urls[1],
+				err,
+			)
+		}
 
 		backend := &Backend{
-        		URL:       chatURL,
-        		HealthURL: healthURL,
-    		}
+			URL:       chatURL,
+			HealthURL: healthURL,
+		}
 
 		backend.Alive.Store(true)
 
 		backends = append(backends, backend)
 
 		log.Printf(
-        		"Backend: %s | Health: %s",
-        		chatURL,
-        		healthURL,
-    		)
+			"Backend: %s | Health: %s",
+			chatURL,
+			healthURL,
+		)
 	}
 
 	lb := &LoadBalancer{
@@ -377,15 +377,15 @@ func main() {
 	go lb.healthLoop()
 
 	server := &http.Server{
-	Addr:    ":7000",
-	Handler: lb,
+		Addr:    ":7000",
+		Handler: lb,
 	}
 
 	log.Println("Load balancer listening on :7000")
 
 	log.Fatal(server.ListenAndServeTLS(
 		"/home/student/chat-ssl/cert.pem",
-        	"/home/student/chat-ssl/key.pem",
+		"/home/student/chat-ssl/key.pem",
 	))
 
 	log.Println("Load balancer starting...")
