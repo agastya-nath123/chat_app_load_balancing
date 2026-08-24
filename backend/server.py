@@ -1,4 +1,5 @@
 import asyncio
+from urllib.parse import urlparse, parse_qs
 import random
 import ssl
 import base64
