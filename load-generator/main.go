@@ -1,33 +1,33 @@
 package main
 
 import (
+	"context"
 	"crypto/tls"
+	"encoding/csv"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
+	"os"
+	"path/filepath"
 	"sort"
 	"sync"
 	"time"
-	"context"
-	"encoding/csv"
-	"os"
-	"path/filepath"
 
 	"github.com/gorilla/websocket"
 )
 
 type Result struct {
-	Experiment      string  `json:"experiment"`
-	Requests        int     `json:"requests"`
-	Concurrency     int     `json:"concurrency"`
-	Successful      int     `json:"successful"`
-	Failed          int     `json:"failed"`
-	ThroughputRPS   float64 `json:"throughput_rps"`
-	DropoutPercent  float64 `json:"dropout_percent"`
-	P50MS           float64 `json:"p50_ms"`
-	P95MS           float64 `json:"p95_ms"`
-	P99MS           float64 `json:"p99_ms"`
+	Experiment     string  `json:"experiment"`
+	Requests       int     `json:"requests"`
+	Concurrency    int     `json:"concurrency"`
+	Successful     int     `json:"successful"`
+	Failed         int     `json:"failed"`
+	ThroughputRPS  float64 `json:"throughput_rps"`
+	DropoutPercent float64 `json:"dropout_percent"`
+	P50MS          float64 `json:"p50_ms"`
+	P95MS          float64 `json:"p95_ms"`
+	P99MS          float64 `json:"p99_ms"`
 }
 
 func percentile(values []time.Duration, p float64) time.Duration {
@@ -173,21 +173,21 @@ func main() {
 	)
 
 	timeout := flag.Duration(
-    	"timeout",
-    	5*time.Second,
-    	"Timeout for each WebSocket connection attempt",
+		"timeout",
+		5*time.Second,
+		"Timeout for each WebSocket connection attempt",
 	)
 
 	out := flag.String(
-    		"out",
-    		"",
-    		"JSON output file",
+		"out",
+		"",
+		"JSON output file",
 	)
 
 	csvPath := flag.String(
-    		"csv",
-    		"",
-    		"Cumulative CSV output file",
+		"csv",
+		"",
+		"Cumulative CSV output file",
 	)
 
 	flag.Parse()
@@ -205,7 +205,7 @@ func main() {
 	}
 
 	if *timeout <= 0 {
-    	log.Fatal("timeout must be greater than 0")
+		log.Fatal("timeout must be greater than 0")
 	}
 
 	if *concurrency > *requests {
@@ -273,12 +273,12 @@ func main() {
 			var err error
 
 			select {
-				case result := <-resultCh:
-					conn = result.conn
-					err = result.err
+			case result := <-resultCh:
+				conn = result.conn
+				err = result.err
 
-				case <-ctx.Done():
-					err = ctx.Err()
+			case <-ctx.Done():
+				err = ctx.Err()
 			}
 
 			elapsed := time.Since(requestStart)
@@ -333,9 +333,9 @@ func main() {
 		Failed:         failed,
 		ThroughputRPS:  throughput,
 		DropoutPercent: dropout,
-		P50MS:           float64(p50) / float64(time.Millisecond),
-		P95MS:           float64(p95) / float64(time.Millisecond),
-		P99MS:           float64(p99) / float64(time.Millisecond),
+		P50MS:          float64(p50) / float64(time.Millisecond),
+		P95MS:          float64(p95) / float64(time.Millisecond),
+		P99MS:          float64(p99) / float64(time.Millisecond),
 	}
 
 	data, err := json.MarshalIndent(
