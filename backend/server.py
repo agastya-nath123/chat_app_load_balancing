@@ -6,6 +6,7 @@ import json
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
+import argparse
 
 import websockets
 from websockets.exceptions import ConnectionClosed
@@ -14,8 +15,15 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives import serialization, hashes
 from cryptography.hazmat.primitives.asymmetric import padding
 
+parser = argparse.ArgumentParser()
+
+parser.add_argument("--port", type=int, default=5266)
+parser.add_argument("--name", default="backend")
+
+args = parser.parse_args()
+
 HOST = "0.0.0.0"
-PORT = 5000
+PORT = args.port
 
 DB_PATH = Path(__file__).with_name("chat.db")
 KEY_PATH = Path(__file__).with_name("encryption.key")
@@ -477,7 +485,7 @@ async def main():
         PORT,
         ssl=ssl_context,
     ):
-        print(f"WebSocket server running on wss://{HOST}:{PORT}")
+        print(f"WebSocket server running on wss://{HOST}:{PORT} (backend server name: {args.name})")
         print(f"Database: {DB_PATH}")
         print("Waiting for clients...")
 
