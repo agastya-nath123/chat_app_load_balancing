@@ -2,7 +2,7 @@
 
 A real-time group chat application that allows multiple users to communicate simultaneously through a common chat room using WebSockets.
 
-The application uses client-side cryptographic keys for message authentication, AES-GCM for message confidentiality and integrity, and HTTPS/WSS for secure communication between clients and the server.
+The application uses client-side cryptographic keys for message authentication, AES-GCM for message confidentiality and integrity, HTTPS/WSS for secure communication, and a Go-based load balancer to distribute WebSocket connections across multiple Python backend servers.
 
 ## Creator:
 
@@ -27,8 +27,14 @@ The application uses client-side cryptographic keys for message authentication, 
 * A new user receives the stored chat history when joining the room.
 * HTTPS is used for the frontend.
 * WSS (WebSocket Secure) is used for communication between the frontend and backend.
-* A single backend server handles all connected clients and broadcasts messages to them.
-* Load balancing is handled in Go.
+* Multiple Python WebSocket backend instances can run simultaneously.
+* A Go load balancer distributes incoming WebSocket connections across backend instances.
+* Backend selection uses round-robin load balancing.
+* The load balancer performs health checks on backend servers.
+* Unhealthy backend servers are removed from the available routing pool.
+* The load balancer provides metrics for monitoring backend traffic and health.
+* WebSocket connections are proxied through the Go load balancer.
+* The frontend connects to the load balancer rather than directly to an individual backend server.
 
 ## Architecture
 
@@ -36,12 +42,69 @@ The application consists of:
 
 * **Backend:** Python WebSocket server using the `websockets` library.
 * **Frontend:** React application built with Vite.
+* **Load Balancer:** Go server responsible for distributing WebSocket connections across backend servers.
 * **Database:** SQLite database used to persist encrypted messages and their associated metadata.
 * **Communication:** WebSockets provide persistent, bidirectional communication between frontend clients and the backend.
 * **Transport Security:** HTTPS is used for the frontend and WSS is used for the WebSocket connection.
 * **Cryptography:** AES-GCM provides message confidentiality and integrity, while RSA-PSS signatures provide message authentication.
+* **Load Balancing:** The Go load balancer uses round-robin routing and backend health checks.
+
+The updated architecture allows several Python backend instances to operate behind a single publicly accessible endpoint.
 
 ```text
+
+
+                                                                 HTTPS
+                                                      ┌────────────────────────┐
+                                                      │                        │
+                                                   User 1                   User 2
+                                                   User 3                   User 4
+                                                      │                        │
+                                                      └──────────┬─────────────┘
+                                                                 │
+                                                                WSS
+                                                                 │
+                                                                 ▼
+                                                      ┌──────────────────────┐
+                                                      │    Go Load Balancer  │
+                                                      │                      │
+                                                      │  • Round Robin       │
+                                                      │  • Health Checks     │
+                                                      │  • WebSocket Proxy   │
+                                                      │  • Metrics           │
+                                                      └──────────┬───────────┘
+                                                                 │
+                         ┌───────────────────────────────────────│─────────────────────────────────────────────────────────────────┐
+                         │                                       │
+                         ▼                                       ▼
+                                                        ┌───────────────────┐                                    
+                                                        │   Backend Server  │
+                                                        │                   │
+                                                        │ Python WebSocket  │
+                                                        │     Server        │
+                                                        └─────────┬─────────┘
+                                                                  │
+                                                         ┌────────┴─────────┐
+                                                         │                  │
+                                                         ▼                  ▼
+                                                  Message Processing     SQLite DB
+                                                         │
+                                                ┌────────┴────────┐
+                                                │                 │
+                                                ▼                 ▼
+                                           RSA-PSS Verify     AES-GCM
+                                                              Encrypt/
+                                                              Decrypt
+                                                     │            │            │
+                                                     └────────────┼────────────┘
+                                                                  │
+                                                                  ▼
+                                                             SQLite DB
+Distributed Deployment
+
+The application can be deployed across multiple systems.
+
+The current deployment uses the following logical topology:
                          HTTPS
               ┌────────────────────────┐
               │                        │
@@ -54,24 +117,7 @@ The application consists of:
                         WSS
                          │
                          ▼
-                ┌───────────────────┐
-                │   Backend Server  │
-                │                   │
-                │ Python WebSocket  │
-                │     Server        │
-                └─────────┬─────────┘
-                          │
-                 ┌────────┴─────────┐
-                 │                  │
-                 ▼                  ▼
-          Message Processing     SQLite DB
-                 │
-        ┌────────┴────────┐
-        │                 │
-        ▼                 ▼
-   RSA-PSS Verify     AES-GCM
-                      Encrypt/
-                      Decrypt
+       
 ```
 
 ## Cryptographic Architecture
