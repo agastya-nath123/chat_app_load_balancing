@@ -8,3 +8,6 @@ chat.db
 .DS_Store
 package-lock.json
 chat.db
+results/
+load-generator
+load-balancer
