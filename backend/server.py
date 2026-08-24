@@ -352,16 +352,6 @@ async def handle_client(websocket):
     if args.delay_ms > 0:
         await asyncio.sleep(args.delay_ms / 1000)
 
-    # Manual failure:
-    # wss://host:port/?fail=true
-
-    if websocket.request is not None:
-        path = websocket.request.path
-        if path == "/?fail=true":
-            print(f"[FAILURE SIMULATION] {NAME}: manual failure")
-            await websocket.close(code=1013, reason="Synthetic failure")
-            return
-
     username = await register_user(websocket)
 
     if username is None:
