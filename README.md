@@ -74,52 +74,111 @@ The updated architecture allows several Python backend instances to operate behi
                                                       │  • Metrics           │
                                                       └──────────┬───────────┘
                                                                  │
-                         ┌───────────────────────────────────────│─────────────────────────────────────────────────────────────────┐
-                         │                                       │
-                         ▼                                       ▼
-                                                        ┌───────────────────┐                                    
-                                                        │   Backend Server  │
-                                                        │                   │
-                                                        │ Python WebSocket  │
-                                                        │     Server        │
-                                                        └─────────┬─────────┘
-                                                                  │
-                                                         ┌────────┴─────────┐
-                                                         │                  │
-                                                         ▼                  ▼
-                                                  Message Processing     SQLite DB
-                                                         │
-                                                ┌────────┴────────┐
-                                                │                 │
-                                                ▼                 ▼
-                                           RSA-PSS Verify     AES-GCM
-                                                              Encrypt/
-                                                              Decrypt
-                                                     │            │            │
-                                                     └────────────┼────────────┘
-                                                                  │
-                                                                  ▼
-                                                             SQLite DB
-Distributed Deployment
+                              ┌───────────────────────────────────────────────────────────────────────────│───────────────────────────────────────────────────────────────────────┐
+                              │                                                                           │                                                                       │
+                              ▼                                                                           ▼                                                                       ▼ 
+                    ┌───────────────────┐                                                       ┌───────────────────┐                                                 ┌───────────────────┐    
+                    │   Backend Server  │                                                       │   Backend Server  │                                                 │   Backend Server  │
+                    │                   │                                                       │                   │                                                 │                   │
+                    │ Python WebSocket  │                                                       │ Python WebSocket  │                                                 │ Python WebSocket  │
+                    │     Server        │                                                       │     Server        │                                                 │     Server        │
+                    └─────────┬─────────┘                                                       └─────────┬─────────┘                                                 └─────────┬─────────┘
+                              │                                                                           │                                                                     │
+                     ┌────────┴─────────┐                                                        ┌────────┴─────────┐                                                  ┌────────┴─────────┐
+                     │                  │                                                        │                  │                                                  │                  │
+                     ▼                  ▼                                                        ▼                  ▼                                                  ▼                  ▼
+              Message Processing     SQLite DB                                            Message Processing     SQLite DB                                      Message Processing     SQLite DB
+                     │                                                                           │                                                                     │
+            ┌────────┴────────┐                                                         ┌────────┴────────┐                                                   ┌────────┴────────┐
+            │                 │                                                         │                 │                                                   │                 │
+            ▼                 ▼                                                         ▼                 ▼                                                   ▼                 ▼
+       RSA-PSS Verify     AES-GCM                                                  RSA-PSS Verify     AES-GCM                                            RSA-PSS Verify     AES-GCM
+                          Encrypt/                                                                    Encrypt/                                                              Encrypt/
+                          Decrypt                                                                     Decrypt                                                               Decrypt
+                 │            │            │                                                 │            │            │                                           │            │            │
+                 └────────────┼────────────┘                                                 └────────────┼────────────┘                                           └────────────┼────────────┘
+                              │                                                                           │                                                                     │
+                              ▼                                                                           ▼                                                                     ▼
+                         SQLite DB                                                                   SQLite DB                                                             SQLite DB
 
-The application can be deployed across multiple systems.
+```
+## Go Load Balancer
 
-The current deployment uses the following logical topology:
-                         HTTPS
-              ┌────────────────────────┐
-              │                        │
-           User 1                   User 2
-              │                        │
-           User 3                   User 4
-              │                        │
-              └──────────┬─────────────┘
-                         │
-                        WSS
-                         │
-                         ▼
-       
+The Go load balancer was added to allow the application to support multiple backend instances rather than relying on a single WebSocket server.
+
+Its responsibilities include:
+
+* Accepting incoming WebSocket connections.
+* Selecting a backend using round-robin scheduling.
+* Forwarding WebSocket traffic to the selected backend.
+* Maintaining a list of available backend servers.
+* Performing backend health checks.
+* Removing unhealthy backends from the routing pool.
+* Allowing recovered backends to become available again.
+* Collecting and exposing load-balancing metrics.
+* Acting as the single endpoint used by the frontend.
+
+The load balancer is implemented separately from the Python messaging server. This allows the existing Python chat implementation to be replicated across multiple machines without moving the chat logic into Go.
+
+## Backend Health Checks
+
+Each Python backend exposes a lightweight health endpoint on a separate port.
+
+The health endpoint returns a JSON response indicating whether the backend is available.
+
+Conceptually:
+
+Go Load Balancer
+       │
+       ├── Health Check ──► Backend 1
+       │
+       ├── Health Check ──► Backend 2
+       │
+       └── Health Check ──► Backend 3
+
+If a backend fails its health check, the load balancer stops assigning new connections to it.
+
+This allows the system to continue accepting connections through the remaining healthy backend instances.
+
+## WebSocket Load Balancing
+
+WebSocket connections are persistent, so load balancing occurs when a client establishes a new WebSocket connection.
+
+Client 1 ──► Go LB ──► Backend 1
+Client 2 ──► Go LB ──► Backend 2
+Client 3 ──► Go LB ──► Backend 3
+Client 4 ──► Go LB ──► Backend 1
+
+The load balancer uses round-robin selection to distribute new connections.
+
+Once a WebSocket connection has been established, the connection remains associated with the selected backend for the lifetime of that connection.
+
+## Backend Server
+
+The messaging backend remains implemented in Python using the websockets library.
+
+Multiple instances of the same backend server can be started with different ports and server names.
+
+For example:
+
+Backend 1
+```code
+python server.py --port <port> --name backend-1
 ```
 
+Backend 2
+```code
+python server.py --port <port> --name backend-2
+```
+
+Backend 3
+```code
+python server.py --port <port> --name backend-3
+```
+
+Each backend maintains its own active WebSocket connections while the Go load balancer distributes new clients between the available instances.
+
+The backend also exposes a health endpoint on a separate port based on its configured WebSocket port.
 ## Cryptographic Architecture
 
 Each client generates an RSA key pair:
@@ -278,14 +337,30 @@ pip install websockets cryptography
 ```
 Start the server:
 ```python
-python server.py
+python server.py --port <port> --name <backend-name>
 ```
 The WebSocket server runs on port 9000 by default.
+The backend WebSocket server uses the configured port, while its health endpoint runs on another port (PORT - 1000).
 
+Multiple backend instances can therefore be started using different ports.
 For secure deployment, the backend uses TLS and accepts secure WebSocket connections through:
 ```code
 wss://<server-ip>:9000
 ```
+
+# Go Load Balancer
+
+The load balancer is implemented separately in Go.
+
+Build the load balancer:
+```code
+go build
+```
+Run the load balancer:
+```code
+./<load-balancer>
+```
+The load balancer maintains the configured backend pool and distributes new WebSocket connections among healthy backends using round-robin scheduling.
 # Frontend
 
 Install the frontend dependencies:
@@ -307,7 +382,12 @@ The frontend connects to the backend using:
 ```code
 wss://<server-ip>:9000
 ```
-HTTPS and WSS
+The frontend connects to the Go load balancer using:
+```code
+wss://<load-balancer-ip>:<load-balancer-port>
+```
+
+# HTTPS and WSS
 
 Because the browser's Web Crypto API requires a secure context, the deployed frontend is served over HTTPS.
 
@@ -324,29 +404,52 @@ React / Vite Frontend
 Python WebSocket Backend
 ```
 For development, a self-signed TLS certificate may be used. Browsers will display a certificate warning because the certificate is not issued by a trusted certificate authority.
+
+The current deployment uses TLS certificates for secure communication, with the Go load-balancing layer serving as the entry point for client WebSocket traffic.
+
+# Monitoring and Health
+
+The Go load balancer includes monitoring information for the backend pool.
+
+The load balancer can track information such as:
+
+* Number of active backend connections.
+* Backend health status.
+* Requests/connections routed to each backend.
+* Availability of backend servers.
+
+This makes it possible to observe how traffic is distributed and demonstrate the effect of backend failures on the system.
+
 ```text
 Project Structure
 chat-app/
 ├── backend
-│   ├── server.py
+│   └── server.py
 ├── chat-frontend
-│   ├── eslint.config.js
-│   ├── index.html
-│   ├── package.json
-│   ├── public
-│   │   ├── favicon.svg
-│   │   └── icons.svg
-│   ├── src
-│   │   ├── App.css
-│   │   ├── App.jsx
-│   │   ├── assets
-│   │   │   ├── hero.png
-│   │   │   ├── react.svg
-│   │   │   └── vite.svg
-│   │   ├── index.css
-│   │   └── main.jsx
-│   └── vite.config.js
-│
+│   ├── eslint.config.js
+│   ├── index.html
+│   ├── package.json
+│   ├── public
+│   │   ├── favicon.svg
+│   │   └── icons.svg
+│   ├── README.md
+│   ├── src
+│   │   ├── App.css
+│   │   ├── App.jsx
+│   │   ├── assets
+│   │   │   ├── hero.png
+│   │   │   ├── react.svg
+│   │   │   └── vite.svg
+│   │   ├── index.css
+│   │   └── main.jsx
+│   └── vite.config.js
+├── load-balancer
+│   ├── go.mod
+│   └── main.go
+├── load-generator
+│   ├── go.mod
+│   ├── go.sum
+│   └── main.go
 └── README.md
 ```
 
@@ -364,3 +467,5 @@ chat-app/
 * RSA-PSS
 * HTTPS
 * WSS
+* Go
+* Reverse-proxy and Load Balancing
