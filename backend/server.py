@@ -4,6 +4,8 @@ import base64
 import os
 import json
 import sqlite3
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from datetime import datetime, timezone
 from pathlib import Path
 import argparse
@@ -474,11 +476,67 @@ async def handle_client(websocket):
                 "content": f"{removed_username} left the chat.",
             })
 
+# ---------------------------------------------------------
+# Basic APIs for load balancing
+# ---------------------------------------------------------
+class HealthHandler(BaseHTTPRequestHandler):
+
+    def do_GET(self):
+        if self.path == "/health":
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+
+            response = json.dumps({
+                "status": "ok",
+                "backend": NAME
+            })
+
+            self.wfile.write(response.encode())
+
+        elif self.path == "/info":
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+
+            response = json.dumps({
+                "backend": NAME,
+                "port": PORT
+            })
+
+            self.wfile.write(response.encode())
+
+        else:
+            self.send_response(404)
+            self.end_headers()
+
+    def log_message(self, format, *args):
+        return
+
+def start_health_server():
+    server = HTTPServer(
+        (HOST, PORT - 1000),
+        HealthHandler
+    )
+
+    print(
+        f"Health API running on "
+        f"http://{HOST}:{PORT - 1000}"
+    )
+
+    server.serve_forever()
 
 async def main():
     """Start the WebSocket server."""
 
     init_db()
+
+    health_thread = threading.Thread(
+        target=start_health_server,
+        daemon=True,
+    )
+
+    health_thread.start()
 
     async with websockets.serve(
         handle_client,
@@ -487,6 +545,7 @@ async def main():
         ssl=ssl_context,
     ):
         print(f"WebSocket server running on wss://{HOST}:{PORT} (backend server name: {NAME})")
+        print(f"Health API running on http://{HOST}:{PORT - 1000}")
         print(f"Database: {DB_PATH}")
         print("Waiting for clients...")
 
