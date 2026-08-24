@@ -1,15 +1,12 @@
-# Real-Time Group Chat Application
+# Real-Time Group Chat Application with Load Balancing in Go
 
 A real-time group chat application that allows multiple users to communicate simultaneously through a common chat room using WebSockets.
 
 The application uses client-side cryptographic keys for message authentication, AES-GCM for message confidentiality and integrity, and HTTPS/WSS for secure communication between clients and the server.
 
-## Members:
+## Creator:
 
 * Agastya Nath - 12340140
-* Galaba Vamsi - 12340770
-* Paritosh Lahre - 12341550
-* Y. Rahul Dev Reddy - 12342390
 
 ## Features
 
@@ -31,6 +28,7 @@ The application uses client-side cryptographic keys for message authentication, 
 * HTTPS is used for the frontend.
 * WSS (WebSocket Secure) is used for communication between the frontend and backend.
 * A single backend server handles all connected clients and broadcasts messages to them.
+* Load balancing is handled in Go.
 
 ## Architecture
 
