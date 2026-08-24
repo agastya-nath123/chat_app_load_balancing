@@ -127,7 +127,7 @@ Each Python backend exposes a lightweight health endpoint on a separate port.
 The health endpoint returns a JSON response indicating whether the backend is available.
 
 Conceptually:
-
+```
 Go Load Balancer
        │
        ├── Health Check ──► Backend 1
@@ -135,7 +135,7 @@ Go Load Balancer
        ├── Health Check ──► Backend 2
        │
        └── Health Check ──► Backend 3
-
+```
 If a backend fails its health check, the load balancer stops assigning new connections to it.
 
 This allows the system to continue accepting connections through the remaining healthy backend instances.
@@ -143,12 +143,12 @@ This allows the system to continue accepting connections through the remaining h
 ## WebSocket Load Balancing
 
 WebSocket connections are persistent, so load balancing occurs when a client establishes a new WebSocket connection.
-
+```
 Client 1 ──► Go LB ──► Backend 1
 Client 2 ──► Go LB ──► Backend 2
 Client 3 ──► Go LB ──► Backend 3
 Client 4 ──► Go LB ──► Backend 1
-
+```
 The load balancer uses round-robin selection to distribute new connections.
 
 Once a WebSocket connection has been established, the connection remains associated with the selected backend for the lifetime of that connection.
