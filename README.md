@@ -179,6 +179,23 @@ python server.py --port <port> --name backend-3
 Each backend maintains its own active WebSocket connections while the Go load balancer distributes new clients between the available instances.
 
 The backend also exposes a health endpoint on a separate port based on its configured WebSocket port.
+
+Failure can be simulated in two ways:
+* Manual: Here, the query string
+  ```code
+  /?fail=true
+  ```
+  will create manual failures
+* Automatic: Here, failures can be simulated with a certain probability through this additional argument:
+  ```code
+  python server.py --port <port> --name backend-3 --failure-rate 0.01
+  ```
+  Here failure will be generated at probability of 0.01.
+* Delay: Here, you can simulate delays and latencies by manually making the server wait for a prespecified period of time at the beginning before it starts up, through this additional argument:
+  ```code
+  python server.py --port <port> --name backend-3 --delay-ms 0.2
+  ```
+  Here, the server waits for 2 milliseconds before starting up.
 ## Cryptographic Architecture
 
 Each client generates an RSA key pair:
