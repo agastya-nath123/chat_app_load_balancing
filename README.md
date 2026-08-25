@@ -185,7 +185,7 @@ Failure can be simulated in two ways:
   ```code
   /?fail=true
   ```
-  will create manual failures
+  will create manual failures.
 * Automatic: Here, failures can be simulated with a certain probability through this additional argument:
   ```code
   python server.py --port <port> --name backend-3 --failure-rate 0.01
